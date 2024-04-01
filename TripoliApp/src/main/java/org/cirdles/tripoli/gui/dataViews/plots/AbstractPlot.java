@@ -20,13 +20,10 @@
 package org.cirdles.tripoli.gui.dataViews.plots;
 
 import javafx.event.EventHandler;
-import javafx.geometry.Side;
-import javafx.scene.Node;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.ContextMenu;
 import javafx.scene.control.MenuItem;
-import javafx.scene.input.MouseButton;
 import javafx.scene.input.MouseEvent;
 import javafx.scene.input.ScrollEvent;
 import javafx.scene.paint.Color;
@@ -34,7 +31,7 @@ import javafx.scene.paint.Paint;
 import javafx.scene.shape.Rectangle;
 import javafx.scene.text.Font;
 import javafx.scene.text.Text;
-import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.ogTripoliPlots.analysisPlots.BlockRatioCyclesAnalysisPlot;
+import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.ogTripoliPlots.analysisPlots.AnalysisBlockCyclesPlotI;
 import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.tripoliPlots.HistogramSinglePlot;
 import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.tripoliPlots.LinePlot;
 import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.tripoliPlots.MultiLineIntensityPlot;
@@ -88,9 +85,9 @@ public abstract class AbstractPlot extends Canvas {
     protected EventHandler<ScrollEvent> scrollEventEventHandler;
 
     protected PlotBuilder plotBuilder;
-    ;
+    protected double yAxisTickSpread = 15.0;
 
-    private AbstractPlot() {
+    AbstractPlot() {
     }
 
     /**
@@ -126,13 +123,17 @@ public abstract class AbstractPlot extends Canvas {
             @Override
             public void handle(ScrollEvent event) {
                 if (mouseInHouse(event.getX(), event.getY())) {
-                    // converting scroll as Y event
+                    // converting scroll as Y event since scroller button works on Y
                     zoomChunkX = Math.abs(zoomChunkX) * Math.signum(event.getDeltaY());
                     zoomChunkY = Math.abs(zoomChunkY) * Math.signum(event.getDeltaY());
                     if (getDisplayRangeX() >= zoomChunkX) {
-                        if (event.getSource() instanceof BlockRatioCyclesAnalysisPlot) {
-                            BlockRatioCyclesAnalysisPlot sourceBlockRatioCyclesAnalysisPlot = (BlockRatioCyclesAnalysisPlot) event.getSource();
-                            sourceBlockRatioCyclesAnalysisPlot.getParentWallPane().synchronizeRatioPlotsScroll(zoomChunkX, zoomChunkY);
+                        if (event.getSource() instanceof AnalysisBlockCyclesPlotI) {
+                            AnalysisBlockCyclesPlotI sourceAnalysisBlockCyclesPlot = (AnalysisBlockCyclesPlotI) event.getSource();
+                            if (event.isControlDown()) {
+                                ((PlotWallPane) sourceAnalysisBlockCyclesPlot.getParentWallPane()).synchronizeRatioPlotsScroll(sourceAnalysisBlockCyclesPlot, zoomChunkX, zoomChunkY);
+                            } else {
+                                sourceAnalysisBlockCyclesPlot.adjustZoomSelf();
+                            }
                         } else {
                             adjustZoom();
                         }
@@ -142,34 +143,38 @@ public abstract class AbstractPlot extends Canvas {
         };
         addEventFilter(ScrollEvent.SCROLL, scrollEventEventHandler);
 
-        mouseDraggedEventHandler = e -> {
-            if (mouseInHouse(e.getX(), e.getY())) {
-                if (e.getSource() instanceof BlockRatioCyclesAnalysisPlot) {
-                    BlockRatioCyclesAnalysisPlot sourceBlockRatioCyclesAnalysisPlot = (BlockRatioCyclesAnalysisPlot) e.getSource();
-                    sourceBlockRatioCyclesAnalysisPlot.getParentWallPane().synchronizeRatioPlotsDrag(e.getX(), e.getY());
-                } else if (e.getSource() instanceof LinePlot) {
-                    LinePlot sourceLinePlot = (LinePlot) e.getSource();
-                    if (mouseInShadeHandle(plotBuilder.getShadeWidthForModelConvergence(), e.getX(), e.getY())) {
-                        plotBuilder.setShadeWidthForModelConvergence(convertMouseXToValue(e.getX()));
-                        sourceLinePlot.getParentWallPane().synchronizeConvergencePlotsShade(((LinePlotBuilder) plotBuilder).getBlockID(), convertMouseXToValue(e.getX()));
+        // Feb 2024 moving pan action to right mouse
+        mouseDraggedEventHandler = event -> {
+            if (mouseInHouse(event.getX(), event.getY()) && event.isSecondaryButtonDown()) {
+                if (event.getSource() instanceof AnalysisBlockCyclesPlotI) {
+                    AnalysisBlockCyclesPlotI sourceAnalysisBlockCyclesPlot = (AnalysisBlockCyclesPlotI) event.getSource();
+                    if (event.isControlDown()) {
+                        ((PlotWallPane) sourceAnalysisBlockCyclesPlot.getParentWallPane()).synchronizeRatioPlotsDrag(event.getX(), event.getY());
+                    } else {
+                        sourceAnalysisBlockCyclesPlot.adjustOffsetsForDrag(event.getX(), event.getY());
                     }
-                } else if (e.getSource() instanceof MultiLineIntensityPlot) {
-                    MultiLineIntensityPlot sourceLinePlot = (MultiLineIntensityPlot) e.getSource();
-                    if (mouseInShadeHandle(plotBuilder.getShadeWidthForModelConvergence(), e.getX(), e.getY())) {
-                        plotBuilder.setShadeWidthForModelConvergence(convertMouseXToValue(e.getX()));
-                        sourceLinePlot.getParentWallPane().synchronizeConvergencePlotsShade(((MultiLinePlotBuilder) plotBuilder).getBlockID(), convertMouseXToValue(e.getX()));
+                } else if (event.getSource() instanceof LinePlot) {
+                    LinePlot sourceLinePlot = (LinePlot) event.getSource();
+                    if (mouseInShadeHandle(plotBuilder.getShadeWidthForModelConvergence(), event.getX(), event.getY())) {
+                        plotBuilder.setShadeWidthForModelConvergence(convertMouseXToValue(event.getX()));
+                        sourceLinePlot.getParentWallPane().synchronizeConvergencePlotsShade(((LinePlotBuilder) plotBuilder).getBlockID(), convertMouseXToValue(event.getX()));
+                    }
+                } else if (event.getSource() instanceof MultiLineIntensityPlot) {
+                    MultiLineIntensityPlot sourceLinePlot = (MultiLineIntensityPlot) event.getSource();
+                    if (mouseInShadeHandle(plotBuilder.getShadeWidthForModelConvergence(), event.getX(), event.getY())) {
+                        plotBuilder.setShadeWidthForModelConvergence(convertMouseXToValue(event.getX()));
+                        sourceLinePlot.getParentWallPane().synchronizeConvergencePlotsShade(((MultiLinePlotBuilder) plotBuilder).getBlockID(), convertMouseXToValue(event.getX()));
                     }
                 } else {
-                    displayOffsetX = displayOffsetX + (convertMouseXToValue(mouseStartX) - convertMouseXToValue(e.getX()));
-                    mouseStartX = e.getX();
+                    displayOffsetX = displayOffsetX + (convertMouseXToValue(mouseStartX) - convertMouseXToValue(event.getX()));
 
                     if (this instanceof HistogramSinglePlot) {
-                        displayOffsetY = Math.max(0.0, displayOffsetY + (convertMouseYToValue(mouseStartY) - convertMouseYToValue(e.getY())));
+                        displayOffsetY = Math.max(0.0, displayOffsetY + (convertMouseYToValue(mouseStartY) - convertMouseYToValue(event.getY())));
                     } else {
-                        displayOffsetY = displayOffsetY + (convertMouseYToValue(mouseStartY) - convertMouseYToValue(e.getY()));
+                        displayOffsetY = displayOffsetY + (convertMouseYToValue(mouseStartY) - convertMouseYToValue(event.getY()));
                     }
-                    mouseStartY = e.getY();
 
+                    adjustMouseStartsForPress(event.getX(), event.getY());
                     calculateTics();
                     repaint();
                 }
@@ -178,17 +183,18 @@ public abstract class AbstractPlot extends Canvas {
         addEventFilter(MouseEvent.MOUSE_DRAGGED, mouseDraggedEventHandler);
 
         EventHandler<MouseEvent> mousePressedEventHandler = e -> {
-            if (mouseInHouse(e.getX(), e.getY()) && e.isPrimaryButtonDown()) {
-                if (e.getSource() instanceof BlockRatioCyclesAnalysisPlot) {
-                    BlockRatioCyclesAnalysisPlot sourceBlockRatioCyclesAnalysisPlot = (BlockRatioCyclesAnalysisPlot) e.getSource();
-                    sourceBlockRatioCyclesAnalysisPlot.getParentWallPane().synchronizeMouseStartsOnPress(e.getX(), e.getY());
+            if (mouseInHouse(e.getX(), e.getY())) {// && e.isPrimaryButtonDown()) {
+                if (e.getSource() instanceof AnalysisBlockCyclesPlotI) {
+                    AnalysisBlockCyclesPlotI sourceAnalysisBlockCyclesPlot = (AnalysisBlockCyclesPlotI) e.getSource();
+                    ((PlotWallPane) sourceAnalysisBlockCyclesPlot.getParentWallPane()).synchronizeMouseStartsOnPress(e.getX(), e.getY());
                 } else {
                     adjustMouseStartsForPress(e.getX(), e.getY());
                 }
             }
         };
         addEventFilter(MouseEvent.MOUSE_PRESSED, mousePressedEventHandler);
-        setOnMouseClicked(new MouseClickEventHandler());
+//        setOnMouseClicked(new MouseClickEventHandler());
+
     }
 
     public PlotBuilder getPlotBuilder() {
@@ -248,11 +254,12 @@ public abstract class AbstractPlot extends Canvas {
         drawBorder(g2d);
         drawPlotLimits(g2d);
 
-        plotData(g2d);
+//        plotData(g2d);
 
         if (showStats) {
             plotStats(g2d);
         }
+        plotData(g2d);
 
         if (this instanceof LinePlot) {
             ((LinePlot) this).plotLeftShade(g2d);
@@ -264,7 +271,10 @@ public abstract class AbstractPlot extends Canvas {
         drawAxes(g2d);
         labelAxisX(g2d);
         labelAxisY(g2d);
-        showTitle(g2d);
+        if (!(this instanceof AnalysisBlockCyclesPlotI)) {
+            showTitle(g2d);
+        }
+        showLegend(g2d);
     }
 
     public void repaint() {
@@ -286,7 +296,7 @@ public abstract class AbstractPlot extends Canvas {
             ticsX[ticsX.length - 1] = new BigDecimal(Double.toString(maxX));
         }
 
-        ticsY = TicGeneratorForAxes.generateTics(getDisplayMinY(), getDisplayMaxY(), Math.max(4, (int) (plotHeight / 15.0)));
+        ticsY = TicGeneratorForAxes.generateTics(getDisplayMinY(), getDisplayMaxY(), Math.max(4, (int) (plotHeight / yAxisTickSpread)));
         if ((0 == ticsY.length) && !Double.isInfinite(minY)) {
             ticsY = new BigDecimal[2];
             ticsY[0] = new BigDecimal(Double.toString(minY));
@@ -355,20 +365,23 @@ public abstract class AbstractPlot extends Canvas {
 
     public void showTitle(GraphicsContext g2d) {
         Paint savedPaint = g2d.getFill();
-        Font titleFont = Font.font("Monospaced Bold", 12);
+        Font titleFont = Font.font("Courier Bold", 12);
         g2d.setFont(titleFont);
         g2d.setFill(Paint.valueOf("RED"));
-        g2d.fillText(plotTitle[0], leftMargin, topMargin - 12);
+        double titleLeftX = 15;
+        g2d.fillText(plotTitle[0], titleLeftX, 12);
         if (2 == plotTitle.length) {
             Text textTitle1 = new Text(plotTitle[0].split("\\.")[0]);
             textTitle1.setFont(titleFont);
             Text textTitle2 = new Text(plotTitle[1].split("\\.")[0]);
             textTitle2.setFont(titleFont);
             double offset = textTitle1.getLayoutBounds().getWidth() - textTitle2.getLayoutBounds().getWidth();
-            g2d.fillText(plotTitle[1], leftMargin + offset, topMargin - 2);
+            g2d.fillText(plotTitle[1], titleLeftX + offset, 22);
         }
         g2d.setFill(savedPaint);
     }
+
+    public abstract void showLegend(GraphicsContext g2d);
 
     private void labelAxisX(GraphicsContext g2d) {
         Paint savedPaint = g2d.getFill();
@@ -382,7 +395,7 @@ public abstract class AbstractPlot extends Canvas {
         g2d.setFill(savedPaint);
     }
 
-    private void labelAxisY(GraphicsContext g2d) {
+    public void labelAxisY(GraphicsContext g2d) {
         Paint savedPaint = g2d.getFill();
         g2d.setFill(Paint.valueOf("BLACK"));
         g2d.setFont(Font.font("SansSerif", 14));
@@ -391,7 +404,7 @@ public abstract class AbstractPlot extends Canvas {
         text.setText(plotAxisLabelY);
         int textWidth = (int) text.getLayoutBounds().getWidth();
         g2d.rotate(-90.0);
-        g2d.fillText(text.getText(), -(2.0 * topMargin + plotHeight) / 2.0 - textWidth / 2.0, 12);
+        g2d.fillText(text.getText(), -(2.0 * topMargin + plotHeight) / 2.0 - textWidth / 2.0, leftMargin - 40);
         g2d.rotate(90.0);
         g2d.setFill(savedPaint);
     }
@@ -553,7 +566,7 @@ public abstract class AbstractPlot extends Canvas {
      * @return
      */
     protected double convertMouseXToValue(double x) {
-        return ((x - leftMargin + 2) / plotWidth) //
+        return ((x - leftMargin + 2) / plotWidth)
                 * getDisplayRangeX()//
                 + getDisplayMinX();
     }
@@ -594,16 +607,17 @@ public abstract class AbstractPlot extends Canvas {
     }
 
     public void setZoomChunkX(double zoomChunkX) {
-        this.zoomChunkX = zoomChunkX;
+        this.zoomChunkX = this.zoomChunkX * -Math.signum(zoomChunkX);
     }
 
     public void setZoomChunkY(double zoomChunkY) {
-        this.zoomChunkY = zoomChunkY;
+        this.zoomChunkY = this.zoomChunkY * -Math.signum(zoomChunkY);
     }
 
     public void adjustZoom() {
-        minX += zoomChunkX;
-        maxX -= zoomChunkX;
+        minX = Math.max(xAxisData[0], minX + zoomChunkX);
+        maxX = Math.min(xAxisData[xAxisData.length - 1], maxX - zoomChunkX);
+        reCalcDisplayOffsetX();
         minY += zoomChunkY;
         maxY -= zoomChunkY;
 
@@ -611,13 +625,35 @@ public abstract class AbstractPlot extends Canvas {
         repaint();
     }
 
+    public void adjustZoomSelf() {
+        minX = Math.max(xAxisData[0], minX - zoomChunkX);
+        maxX = Math.min(xAxisData[xAxisData.length - 1], maxX + zoomChunkX);
+        reCalcDisplayOffsetX();
+        minY += -zoomChunkY;
+        maxY -= -zoomChunkY;
+
+        calculateTics();
+        repaint();
+    }
+
     public void adjustOffsetsForDrag(double x, double y) {
         displayOffsetX = displayOffsetX + (convertMouseXToValue(mouseStartX) - convertMouseXToValue(x));
+        reCalcDisplayOffsetX();
         mouseStartX = x;
         displayOffsetY = displayOffsetY + (convertMouseYToValue(mouseStartY) - convertMouseYToValue(y));
         mouseStartY = y;
+
         calculateTics();
         repaint();
+    }
+
+    private void reCalcDisplayOffsetX() {
+        if (getDisplayMaxX() > xAxisData[xAxisData.length - 1]) {
+            displayOffsetX -= (getDisplayMaxX() - xAxisData[xAxisData.length - 1]);
+        }
+        if (getDisplayMinX() < xAxisData[0]) {
+            displayOffsetX -= (getDisplayMinX() - xAxisData[0]);
+        }
     }
 
     public void adjustMouseStartsForPress(double x, double y) {
@@ -632,26 +668,27 @@ public abstract class AbstractPlot extends Canvas {
         return inWidth && inHeight;
     }
 
-    class MouseClickEventHandler implements EventHandler<MouseEvent> {
-        @Override
-        public void handle(MouseEvent mouseEvent) {
-            plotContextMenu.hide();
-            boolean isPrimary = (0 == mouseEvent.getButton().compareTo(MouseButton.PRIMARY));
-            boolean isBlockRatioCyclesSessionPlot = (mouseEvent.getSource() instanceof BlockRatioCyclesAnalysisPlot);
-
-            if (mouseInHouse(mouseEvent.getX(), mouseEvent.getY())) {
-                if (!isPrimary && isBlockRatioCyclesSessionPlot) {
-                    // TODO:  remove duplicate code
-                    BlockRatioCyclesAnalysisPlot blockRatioCyclesAnalysisPlot = (BlockRatioCyclesAnalysisPlot) mouseEvent.getSource();
-                    // determine blockID
-                    double xValue = convertMouseXToValue(mouseEvent.getX());
-                    int blockID = (int) ((xValue - 0.7) / blockRatioCyclesAnalysisPlot.getBlockRatioCyclesSessionRecord().cyclesPerBlock()) + 1;
-                    BlockRatioCyclesAnalysisPlot sourceBlockRatioCyclesAnalysisPlot = (BlockRatioCyclesAnalysisPlot) mouseEvent.getSource();
-                    sourceBlockRatioCyclesAnalysisPlot.getParentWallPane().synchronizeBlockToggle(blockID);
-                } else if (!isPrimary) {
-                    plotContextMenu.show((Node) mouseEvent.getSource(), Side.LEFT, mouseEvent.getX() - getLayoutX(), mouseEvent.getY() - getLayoutY());
-                }
-            }
-        }
-    }
+//    class MouseClickEventHandler implements EventHandler<MouseEvent> {
+//        @Override
+//        public void handle(MouseEvent mouseEvent) {
+//            plotContextMenu.hide();
+//            boolean isPrimary = (0 == mouseEvent.getButton().compareTo(MouseButton.PRIMARY));
+//            boolean isBlockRatioCyclesSessionPlot = (mouseEvent.getSource() instanceof AnalysisBlockCyclesPlot);
+//
+//            if (mouseInHouse(mouseEvent.getX(), mouseEvent.getY())) {
+////                if (!isPrimary && isBlockRatioCyclesSessionPlot) {
+////                    // TODO:  remove duplicate code
+////                    AnalysisBlockCyclesPlot analysisBlockCyclesPlot = (AnalysisBlockCyclesPlot) mouseEvent.getSource();
+////                    // determine blockID
+////                    double xValue = convertMouseXToValue(mouseEvent.getX());
+////                    int blockID = (int) ((xValue - 0.7) / analysisBlockCyclesPlot.getBlockRatioCyclesSessionRecord().cyclesPerBlock()) + 1;
+////                    AnalysisBlockCyclesPlot sourceAnalysisBlockCyclesPlot = (AnalysisBlockCyclesPlot) mouseEvent.getSource();
+////                    ((PlotWallPane) sourceAnalysisBlockCyclesPlot.getParentWallPane()).synchronizeBlockToggle(blockID);
+////                } else
+//                if (!isPrimary) {
+//                    plotContextMenu.show((Node) mouseEvent.getSource(), Side.LEFT, mouseEvent.getX() - getLayoutX(), mouseEvent.getY() - getLayoutY());
+//                }
+//            }
+//        }
+//    }
 }

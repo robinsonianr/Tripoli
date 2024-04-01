@@ -23,56 +23,66 @@ import javafx.scene.Node;
 import javafx.scene.control.*;
 import javafx.scene.layout.AnchorPane;
 import javafx.scene.layout.Pane;
+import javafx.scene.text.Font;
+import javafx.scene.text.FontWeight;
 import org.cirdles.tripoli.gui.AnalysisManagerCallbackI;
 import org.cirdles.tripoli.gui.constants.ConstantsTripoliApp;
 import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.mcmcPlots.MCMCPlotsControllerInterface;
-import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.ogTripoliPlots.analysisPlots.BlockRatioCyclesAnalysisPlot;
+import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.ogTripoliPlots.analysisPlots.AnalysisBlockCyclesPlotI;
+import org.cirdles.tripoli.gui.utilities.BrowserControl;
 import org.cirdles.tripoli.sessions.analysis.Analysis;
 import org.cirdles.tripoli.sessions.analysis.AnalysisInterface;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc.EnsemblesStore;
 
+import java.nio.file.Path;
 import java.util.List;
 import java.util.stream.Collectors;
 
+import static org.cirdles.tripoli.Tripoli.TRIPOLI_RESOURCE_EXTRACTOR;
 import static org.cirdles.tripoli.constants.TripoliConstants.*;
 import static org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc.BlockEnsemblesPlotter.blockEnsemblePlotEngine;
 
 /**
  * @author James F. Bowring
  */
-public class PlotWallPane extends Pane {
+public class PlotWallPane extends Pane implements PlotWallPaneInterface {
 
     public static final double gridCellDim = 2.0;
-    public static final double toolBarHeight = 35.0;
     public static double menuOffset = 30.0;
     private final String iD;
     private final boolean[] zoomFlagsXY = new boolean[2];
     private final AnalysisInterface analysis;
-    private final MCMCPlotsControllerInterface mcmcPlotsControllerInterface;
+    private final MCMCPlotsControllerInterface mcmcPlotsController;
     AnalysisManagerCallbackI analysisManagerCallbackI;
+    private double toolBarHeight;
+    private int toolBarCount;
     private boolean logScale;
+    private boolean blockMode;
     private ConstantsTripoliApp.PlotLayoutStyle plotLayoutStyle;
+    private ToolBar scaleControlsToolbar;
 
-    private PlotWallPane(String iD, AnalysisInterface analysis, MCMCPlotsControllerInterface mcmcPlotsControllerInterface, AnalysisManagerCallbackI analysisManagerCallbackI) {
+
+    private PlotWallPane(String iD, AnalysisInterface analysis, MCMCPlotsControllerInterface mcmcPlotsController, AnalysisManagerCallbackI analysisManagerCallbackI) {
         this.iD = iD;
         zoomFlagsXY[0] = true;
         zoomFlagsXY[1] = true;
         this.analysis = analysis;
-        this.mcmcPlotsControllerInterface = mcmcPlotsControllerInterface;
+        this.mcmcPlotsController = mcmcPlotsController;
         this.analysisManagerCallbackI = analysisManagerCallbackI;
         plotLayoutStyle = ConstantsTripoliApp.PlotLayoutStyle.TILE;
+        this.blockMode = true;
 
     }
 
-    public static PlotWallPane createPlotWallPane(
+    public static PlotWallPaneInterface createPlotWallPane(
             String iD,
             AnalysisInterface analysis,
-            MCMCPlotsControllerInterface mcmcPlotsControllerInterface,
+            MCMCPlotsControllerInterface mcmcPlotsController,
             AnalysisManagerCallbackI analysisManagerCallbackI) {
         if (null == iD) {
-            return new PlotWallPane("NONE", analysis, mcmcPlotsControllerInterface, analysisManagerCallbackI);
+            return new PlotWallPane("NONE", analysis, mcmcPlotsController, analysisManagerCallbackI);
         } else {
-            return new PlotWallPane(iD, analysis, mcmcPlotsControllerInterface, analysisManagerCallbackI);
+            return new PlotWallPane(iD, analysis, mcmcPlotsController, analysisManagerCallbackI);
         }
     }
 
@@ -86,22 +96,22 @@ public class PlotWallPane extends Pane {
                 .filter(plot -> plot instanceof TripoliPlotPane)
                 .collect(Collectors.toList());
 
-        double widthTileCount = Math.min(5, plotPanes.size());
-        double heightTileCount = Math.ceil(plotPanes.size() / widthTileCount);
+        double rowTileCount = Math.floor(Math.sqrt(plotPanes.size()));
+        int columnTileCount = (int) Math.ceil(plotPanes.size() / rowTileCount);
 
         double parentWidth = Math.max(((AnchorPane) getParent()).getPrefWidth(), ((AnchorPane) getParent()).getMinWidth());
-        double displayWidth = (parentWidth - gridCellDim * 2.0) / widthTileCount;
+        double displayWidth = (parentWidth - gridCellDim * 2.0) / columnTileCount;
         double tileWidth = displayWidth - displayWidth % gridCellDim;
 
         double parentHeight = Math.max(((AnchorPane) getParent()).getPrefHeight(), ((AnchorPane) getParent()).getMinHeight());
-        double displayHeight = (parentHeight - toolBarHeight - gridCellDim * heightTileCount) / heightTileCount;
+        double displayHeight = (parentHeight - toolBarHeight - gridCellDim * rowTileCount) / rowTileCount;
         double tileHeight = displayHeight - displayHeight % gridCellDim;
 
         int plotIndex = 0;
         for (Node plot : plotPanes) {
-            plot.setLayoutY(gridCellDim + toolBarHeight + tileHeight * Math.floor(plotIndex / widthTileCount));
+            plot.setLayoutY(gridCellDim + toolBarHeight + tileHeight * Math.floor(plotIndex / columnTileCount));
             ((Pane) plot).setPrefHeight(tileHeight);
-            plot.setLayoutX(gridCellDim + tileWidth * (plotIndex % widthTileCount));
+            plot.setLayoutX(gridCellDim + tileWidth * (plotIndex % columnTileCount));
             ((Pane) plot).setPrefWidth(tileWidth);
 
             ((TripoliPlotPane) plot).snapToGrid();
@@ -160,46 +170,25 @@ public class PlotWallPane extends Pane {
         plotLayoutStyle = ConstantsTripoliApp.PlotLayoutStyle.STACK;
     }
 
-    public void cascadePlots() {
-
-        double cascadeLap = 20.0;
-
-        double parentWidth = Math.max(((AnchorPane) getParent()).getPrefWidth(), ((AnchorPane) getParent()).getMinWidth());
-        double displayWidth = parentWidth - cascadeLap * (getCountOfPlots() - 1);
-        double tileWidth = displayWidth - gridCellDim;
-
-        double parentHeight = Math.max(((AnchorPane) getParent()).getPrefHeight(), ((AnchorPane) getParent()).getMinHeight());
-        double displayHeight = parentHeight - toolBarHeight - cascadeLap * (getCountOfPlots() - 1);
-        double tileHeight = displayHeight - gridCellDim;
-
-        int plotIndex = 0;
-        for (Node plotPane : getChildren()) {
-            if (plotPane instanceof TripoliPlotPane) {
-                plotPane.setLayoutY(gridCellDim + toolBarHeight + cascadeLap * plotIndex);
-                ((Pane) plotPane).setPrefHeight(tileHeight);
-                plotPane.setLayoutX(gridCellDim + cascadeLap * plotIndex);
-                ((Pane) plotPane).setPrefWidth(tileWidth);
-
-                ((TripoliPlotPane) plotPane).snapToGrid();
-
-                plotIndex++;
-            }
-        }
-        plotLayoutStyle = ConstantsTripoliApp.PlotLayoutStyle.CASCADE;
-    }
-
     public void repeatLayoutStyle() {
         switch (plotLayoutStyle) {
             case TILE -> tilePlots();
             case STACK -> stackPlots();
-            case CASCADE -> cascadePlots();
         }
     }
 
-    public void restoreAllPlots() {
+    public void replotAll() {
         for (Node plotPane : getChildren()) {
             if (plotPane instanceof TripoliPlotPane) {
-                ((TripoliPlotPane) plotPane).restorePlot();
+                ((TripoliPlotPane) plotPane).replot();
+            }
+        }
+    }
+
+    public void resetDataAll() {
+        for (Node plotPane : getChildren()) {
+            if (plotPane instanceof TripoliPlotPane) {
+                ((TripoliPlotPane) plotPane).resetData();
             }
         }
     }
@@ -221,12 +210,14 @@ public class PlotWallPane extends Pane {
     }
 
     public void applyBurnIn() {
-        int burnIn = (int) analysis.getMapOfBlockIdToPlots().get(mcmcPlotsControllerInterface.getCurrentBlockID())[5][0].getShadeWidthForModelConvergence();
-        int blockID = mcmcPlotsControllerInterface.getCurrentBlockID();
+        int burnIn = (int) analysis.getMapOfBlockIdToPlots().get(mcmcPlotsController.getCurrentBlockID())[5][0].getShadeWidthForModelConvergence();
+        int blockID = mcmcPlotsController.getCurrentBlockID();
         analysis.getMapOfBlockIdToModelsBurnCount().put(blockID, burnIn);
+
         blockEnsemblePlotEngine(blockID, analysis);
-        mcmcPlotsControllerInterface.plotEnsemblesEngine(analysis.getMapOfBlockIdToPlots().get(blockID));
-        mcmcPlotsControllerInterface.plotRatioSessionEngine();
+        mcmcPlotsController.plotEnsemblesEngine(analysis.getMapOfBlockIdToPlots().get(blockID));
+        ((Analysis) analysis).analysisRatioEngine();
+        mcmcPlotsController.plotAnalysisRatioEngine();
         EnsemblesStore.produceSummaryModelFromEnsembleStore(blockID, analysis);
 
         // fire up OGTripoli style analysis plots
@@ -236,18 +227,19 @@ public class PlotWallPane extends Pane {
     }
 
     public void applyBurnInAllBlocks() {
-        int burnIn = (int) analysis.getMapOfBlockIdToPlots().get(mcmcPlotsControllerInterface.getCurrentBlockID())[5][0].getShadeWidthForModelConvergence();
+        int burnIn = (int) analysis.getMapOfBlockIdToPlots().get(mcmcPlotsController.getCurrentBlockID())[5][0].getShadeWidthForModelConvergence();
         int blockIDCount = analysis.getMapOfBlockIdToPlots().keySet().size() + 1;
+
         for (int blockID = 1; blockID < blockIDCount; blockID++) {
             ((Analysis) analysis).updateShadeWidthsForConvergenceLinePlots(blockID, burnIn);
             analysis.getMapOfBlockIdToModelsBurnCount().put(blockID, burnIn);
             blockEnsemblePlotEngine(blockID, analysis);
-            mcmcPlotsControllerInterface.plotEnsemblesEngine(analysis.getMapOfBlockIdToPlots().get(blockID));
-//            mcmcPlotsControllerInterface.plotRatioSessionEngine();
+            mcmcPlotsController.plotEnsemblesEngine(analysis.getMapOfBlockIdToPlots().get(blockID));
             EnsemblesStore.produceSummaryModelFromEnsembleStore(blockID, analysis);
         }
 
-        mcmcPlotsControllerInterface.plotRatioSessionEngine();
+        ((Analysis) analysis).analysisRatioEngine();
+        mcmcPlotsController.plotAnalysisRatioEngine();
 
         // fire up OGTripoli style analysis plots
         if (null != analysisManagerCallbackI) {
@@ -268,7 +260,7 @@ public class PlotWallPane extends Pane {
         toolBar.setPrefHeight(toolBarHeight);
 
         Button restoreButton = new Button("Restore Plots");
-        restoreButton.setOnAction(event -> restoreAllPlots());
+        restoreButton.setOnAction(event -> replotAll());
         toolBar.getItems().add(restoreButton);
 
         if ((0 != iD.compareToIgnoreCase(PLOT_TAB_CONVERGE))
@@ -290,10 +282,6 @@ public class PlotWallPane extends Pane {
             Button stackButton = new Button("Stack Plots");
             stackButton.setOnAction(event -> stackPlots());
             toolBar.getItems().add(stackButton);
-
-            Button cascadeButton = new Button("Cascade Plots");
-            cascadeButton.setOnAction(event -> cascadePlots());
-            toolBar.getItems().add(cascadeButton);
         }
 
         if (0 == iD.compareToIgnoreCase(PLOT_TAB_ENSEMBLES)) {
@@ -310,54 +298,90 @@ public class PlotWallPane extends Pane {
     }
 
     public void buildScaleControlsToolbar() {
-        ToolBar toolBar = new ToolBar();
-        toolBar.setPrefHeight(toolBarHeight);
-        toolBar.setLayoutY(0.0);
+        Font commandFont = Font.font("SansSerif", FontWeight.BOLD, 12);
+        scaleControlsToolbar = new ToolBar();
+        scaleControlsToolbar.setPrefHeight(toolBarHeight);
+        scaleControlsToolbar.setStyle(scaleControlsToolbar.getStyle() + ";-fx-background-color:LINEN");
+        scaleControlsToolbar.setLayoutY(0.0);
 
-        Button button0 = new Button("Restore Plots");
-        button0.setOnAction(event -> restoreAllPlots());
-        toolBar.getItems().add(button0);
+        Button infoButton = new Button("?");
+        infoButton.setFont(commandFont);
+        infoButton.setOnAction(event -> {
+            Path resourcePath = TRIPOLI_RESOURCE_EXTRACTOR.extractResourceAsPath("docs/ogTripoliHelp.md");
+            BrowserControl.showURI(resourcePath.toString());
+        });
+        scaleControlsToolbar.getItems().add(infoButton);
 
-        Button button1 = new Button("Toggle Stats");
-        button1.setOnAction(event -> toggleShowStatsAllPlots());
-        toolBar.getItems().add(button1);
+        Button replotAllButton = new Button("Replot All");
+        replotAllButton.setFont(commandFont);
+        replotAllButton.setOnAction(event -> replotAll());
+        scaleControlsToolbar.getItems().add(replotAllButton);
+
+        Button resetAllDataButton = new Button("Reset All Data");
+        resetAllDataButton.setFont(commandFont);
+        resetAllDataButton.setOnAction(event -> resetDataAll());
+        scaleControlsToolbar.getItems().add(resetAllDataButton);
+
+        Button chauvenetButton = new Button("Chauvenet");
+        chauvenetButton.setFont(commandFont);
+//        chauvenetButton.setOnAction(event -> replotAll());
+        scaleControlsToolbar.getItems().add(chauvenetButton);
+
+        Button toggleStatsButton = new Button("Toggle Stats");
+        toggleStatsButton.setFont(commandFont);
+        toggleStatsButton.setOnAction(event -> toggleShowStatsAllPlots());
+        scaleControlsToolbar.getItems().add(toggleStatsButton);
 
         Button tileButton = new Button("Tile Plots");
+        tileButton.setFont(commandFont);
         tileButton.setOnAction(event -> tilePlots());
-        toolBar.getItems().add(tileButton);
+        scaleControlsToolbar.getItems().add(tileButton);
 
         Button stackButton = new Button("Stack Plots");
+        stackButton.setFont(commandFont);
         stackButton.setOnAction(event -> stackPlots());
-        toolBar.getItems().add(stackButton);
+        scaleControlsToolbar.getItems().add(stackButton);
 
-        Button cascadeButton = new Button("Cascade Plots");
-        cascadeButton.setOnAction(event -> cascadePlots());
-        toolBar.getItems().add(cascadeButton);
+        Label labelMode = new Label("Mode:");
+        labelMode.setFont(commandFont);
+        labelMode.setAlignment(Pos.CENTER_RIGHT);
+        labelMode.setPrefWidth(50);
+        scaleControlsToolbar.getItems().add(labelMode);
 
-        Label labelScale = new Label("Scale:");
+        CheckBox cycleCB = new CheckBox("Cycle");
+        scaleControlsToolbar.getItems().add(cycleCB);
+        cycleCB.selectedProperty().addListener(
+                (ObservableValue<? extends Boolean> ov, Boolean oldVal, Boolean newVal) -> {
+                    blockMode = !newVal;
+                    rebuildPlot(false, true);
+                });
+
+        Label labelScale = new Label("Ratio Scale:");
+        labelScale.setFont(commandFont);
         labelScale.setAlignment(Pos.CENTER_RIGHT);
-        labelScale.setPrefWidth(60);
-        toolBar.getItems().add(labelScale);
+        labelScale.setPrefWidth(80);
+        scaleControlsToolbar.getItems().add(labelScale);
 
         CheckBox logCB = new CheckBox("Log");
-        toolBar.getItems().add(logCB);
+        scaleControlsToolbar.getItems().add(logCB);
         logCB.selectedProperty().addListener(
                 (ObservableValue<? extends Boolean> ov, Boolean oldVal, Boolean newVal) -> {
                     logScale = newVal;
                     rebuildPlot(false, true);
                 });
 
-        Label labelViews = new Label("Zoom:");
-        labelViews.setAlignment(Pos.CENTER_RIGHT);
-        labelViews.setPrefWidth(50);
-        toolBar.getItems().add(labelViews);
+        Label labelZoom = new Label("Zoom:");
+        labelZoom.setFont(commandFont);
+        labelZoom.setAlignment(Pos.CENTER_RIGHT);
+        labelZoom.setPrefWidth(50);
+        scaleControlsToolbar.getItems().add(labelZoom);
 
         ToggleGroup toggleScaleY = new ToggleGroup();
 
         RadioButton countsRB = new RadioButton("Both");
         countsRB.setToggleGroup(toggleScaleY);
         countsRB.setSelected(true);
-        toolBar.getItems().add(countsRB);
+        scaleControlsToolbar.getItems().add(countsRB);
         countsRB.selectedProperty().addListener(
                 (ObservableValue<? extends Boolean> ov, Boolean oldVal, Boolean newVal) -> {
                     if (newVal) {
@@ -369,7 +393,7 @@ public class PlotWallPane extends Pane {
 
         RadioButton xOnlyRB = new RadioButton("X-only");
         xOnlyRB.setToggleGroup(toggleScaleY);
-        toolBar.getItems().add(xOnlyRB);
+        scaleControlsToolbar.getItems().add(xOnlyRB);
         xOnlyRB.selectedProperty().addListener(
                 (ObservableValue<? extends Boolean> ov, Boolean oldVal, Boolean newVal) -> {
                     if (newVal) {
@@ -381,7 +405,7 @@ public class PlotWallPane extends Pane {
 
         RadioButton yOnlyRB = new RadioButton("Y-only");
         yOnlyRB.setToggleGroup(toggleScaleY);
-        toolBar.getItems().add(yOnlyRB);
+        scaleControlsToolbar.getItems().add(yOnlyRB);
         yOnlyRB.selectedProperty().addListener(
                 (ObservableValue<? extends Boolean> ov, Boolean oldVal, Boolean newVal) -> {
                     if (newVal) {
@@ -392,13 +416,31 @@ public class PlotWallPane extends Pane {
                 });
 
 
-        getChildren().add(toolBar);
+        getChildren().add(scaleControlsToolbar);
+    }
+
+    @Override
+    public double getToolBarHeight() {
+        return toolBarHeight;
+    }
+
+    public void setToolBarHeight(double toolBarHeight) {
+        this.toolBarHeight = toolBarHeight;
+    }
+
+    @Override
+    public int getToolBarCount() {
+        return toolBarCount;
+    }
+
+    public void setToolBarCount(int toolBarCount) {
+        this.toolBarCount = toolBarCount;
     }
 
     private void rebuildPlot(boolean reScaleX, boolean reScaleY) {
         for (Node plotPane : getChildren()) {
             if (plotPane instanceof TripoliPlotPane) {
-                ((TripoliPlotPane) plotPane).updateAnalysisRatiosPlotted(logScale, reScaleX, reScaleY);
+                ((TripoliPlotPane) plotPane).updateAnalysisRatiosPlotted(blockMode, logScale, reScaleX, reScaleY);
             }
         }
     }
@@ -411,14 +453,18 @@ public class PlotWallPane extends Pane {
         }
     }
 
-    public void synchronizeRatioPlotsScroll(double zoomChunkX, double zoomChunkY) {
+    public void synchronizeRatioPlotsScroll(AnalysisBlockCyclesPlotI sourceAnalysisBlockCyclesPlot, double zoomChunkX, double zoomChunkY) {
         ObservableList<Node> children = getChildren();
         for (Node child : children) {
             if (child instanceof TripoliPlotPane) {
-                BlockRatioCyclesAnalysisPlot childPlot = (BlockRatioCyclesAnalysisPlot) ((TripoliPlotPane) child).getChildren().get(0);
-                childPlot.setZoomChunkX(zoomChunkX);
-                childPlot.setZoomChunkY(zoomChunkY);
-                childPlot.adjustZoom();
+                AnalysisBlockCyclesPlotI childPlot = (AnalysisBlockCyclesPlotI) ((TripoliPlotPane) child).getPlot();
+                if (childPlot != sourceAnalysisBlockCyclesPlot) {
+                    childPlot.setZoomChunkX(zoomChunkX);
+                    childPlot.setZoomChunkY(zoomChunkY);
+                    childPlot.adjustZoom();
+                } else {
+                    childPlot.adjustZoomSelf();
+                }
             }
         }
     }
@@ -427,7 +473,7 @@ public class PlotWallPane extends Pane {
         ObservableList<Node> children = getChildren();
         for (Node child : children) {
             if (child instanceof TripoliPlotPane) {
-                BlockRatioCyclesAnalysisPlot childPlot = (BlockRatioCyclesAnalysisPlot) ((TripoliPlotPane) child).getChildren().get(0);
+                AnalysisBlockCyclesPlotI childPlot = (AnalysisBlockCyclesPlotI) ((TripoliPlotPane) child).getPlot();
                 childPlot.adjustOffsetsForDrag(x, y);
             }
         }
@@ -437,8 +483,8 @@ public class PlotWallPane extends Pane {
         ((Analysis) analysis).updateShadeWidthsForConvergenceLinePlots(blockID, shadeWidth);
         ObservableList<Node> children = getChildren();
         for (Node child : children) {
-            if ((child instanceof TripoliPlotPane) && (((TripoliPlotPane) child).getChildren().get(0) instanceof AbstractPlot)) {
-                ((AbstractPlot) ((TripoliPlotPane) child).getChildren().get(0)).repaint();
+            if ((child instanceof TripoliPlotPane) && (((TripoliPlotPane) child).getPlot() instanceof AbstractPlot)) {
+                ((TripoliPlotPane) child).getPlot().repaint();
             }
         }
     }
@@ -447,7 +493,7 @@ public class PlotWallPane extends Pane {
         ObservableList<Node> children = getChildren();
         for (Node child : children) {
             if (child instanceof TripoliPlotPane) {
-                BlockRatioCyclesAnalysisPlot childPlot = (BlockRatioCyclesAnalysisPlot) ((TripoliPlotPane) child).getChildren().get(0);
+                AnalysisBlockCyclesPlotI childPlot = (AnalysisBlockCyclesPlotI) ((TripoliPlotPane) child).getPlot();
                 childPlot.adjustMouseStartsForPress(x, y);
             }
         }
@@ -458,13 +504,13 @@ public class PlotWallPane extends Pane {
         boolean included = false;
         for (Node child : children) {
             if (child instanceof TripoliPlotPane) {
-                BlockRatioCyclesAnalysisPlot childPlot = (BlockRatioCyclesAnalysisPlot) ((TripoliPlotPane) child).getChildren().get(0);
-                if (childPlot.getMapBlockIdToBlockRatioCyclesRecord().get(blockID) != null) {
-                    childPlot.getMapBlockIdToBlockRatioCyclesRecord().put(
+                AnalysisBlockCyclesPlotI childPlot = (AnalysisBlockCyclesPlotI) ((TripoliPlotPane) child).getPlot();
+                if (childPlot.getMapBlockIdToBlockCyclesRecord().get(blockID) != null) {
+                    childPlot.getMapBlockIdToBlockCyclesRecord().put(
                             blockID,
-                            childPlot.getMapBlockIdToBlockRatioCyclesRecord().get(blockID).toggleBlockIncluded());
+                            childPlot.getMapBlockIdToBlockCyclesRecord().get(blockID).toggleBlockIncluded());
                     childPlot.repaint();
-                    included = childPlot.getMapBlockIdToBlockRatioCyclesRecord().get(blockID).blockIncluded();
+                    included = childPlot.getMapBlockIdToBlockCyclesRecord().get(blockID).blockIncluded();
                 }
             }
         }

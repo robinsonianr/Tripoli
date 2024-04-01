@@ -18,15 +18,16 @@ package org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.
 
 import jama.Matrix;
 import org.apache.commons.math3.stat.descriptive.DescriptiveStatistics;
+import org.cirdles.tripoli.expressions.species.IsotopicRatio;
 import org.cirdles.tripoli.sessions.analysis.Analysis;
 import org.cirdles.tripoli.sessions.analysis.AnalysisInterface;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc.initializers.SingleBlockModelInitForMCMC;
 import org.cirdles.tripoli.sessions.analysis.methods.AnalysisMethod;
-import org.cirdles.tripoli.species.IsotopicRatio;
 
 import java.io.Serializable;
 import java.util.*;
 
-import static org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc.SingleBlockModelInitForMCMC.modelInitData;
+import static org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc.initializers.SingleBlockModelInitForMCMC.modelInitData;
 
 /**
  * @author James F. Bowring
@@ -140,7 +141,8 @@ public class EnsemblesStore implements Serializable {
             cyclesList = new ArrayList<>();
             tempTime = new ArrayList<>();
             for (int dataArrayIndex = 0; dataArrayIndex < rawData.length; dataArrayIndex++) {
-                if (isotopeOrdinalIndicesAccumulatorArray[dataArrayIndex] == isotopeIndex + 1) {
+                if ((isotopeOrdinalIndicesAccumulatorArray[dataArrayIndex] == isotopeIndex + 1)
+                        && ((Analysis) analysis).getMapOfBlockIdToIncludedIntensities().get(blockID)[dataArrayIndex]) {
                     if (dataArrayIndex < startIndexOfPhotoMultiplierData) {
                         double calculated = (rawData[dataArrayIndex]
                                 - baselinesMeans[singleBlockModelRecord.mapDetectorOrdinalToFaradayIndex().get(d0_detVec[dataArrayIndex])]) * dalyFaradayGainMean;
@@ -176,7 +178,11 @@ public class EnsemblesStore implements Serializable {
             Matrix I = new Matrix(meansI0, meansI0.length);
             Matrix intensityFn = II.times(I);
 
+            // get data included array ***********************************************************************************
+            boolean[][] blockOnPeakIncluded = ((Analysis) analysis).getMapOfBlockIdToIncludedPeakData().get(singleBlockRawDataSetRecord.blockID());
             DescriptiveStatistics[] cycleStats = new DescriptiveStatistics[summaryMCMCModel.cycleCount()];
+            int countOfIsotopes = analysisMethod.getSpeciesList().size();
+            int indexOfMostAbundantIsotope = countOfIsotopes - 1;
 
             for (int dataArrayIndex = 0; dataArrayIndex < ddVer2SortedArray.length; dataArrayIndex++) {
                 int cycle = cyclesSortedArray[dataArrayIndex] - 1;
@@ -184,23 +190,25 @@ public class EnsemblesStore implements Serializable {
                     cycleStats[cycle] = new DescriptiveStatistics();
                 }
                 // TODO: make this checks for both isotopes (eventually may include denominator as one that is excluded)
-                if (singleBlockModelRecord.mapOfSpeciesToActiveCycles().get(analysisMethod.getSpeciesList().get(isotopeIndex))[cycle]) {
-                    cycleStats[cycle].addValue(ddVer2SortedArray[dataArrayIndex] / intensityFn.get(dataArrayIndex, 0));
+                if (singleBlockModelRecord.mapOfSpeciesToActiveCycles().get(analysisMethod.getSpeciesList().get(isotopeIndex))[cycle]
+                        && blockOnPeakIncluded[isotopeIndex][dataArrayIndex] && blockOnPeakIncluded[indexOfMostAbundantIsotope][dataArrayIndex]) {
+                    cycleStats[cycle].addValue(ddVer2SortedArray[dataArrayIndex] / intensityFn.get(comparatorTime.getArray()[dataArrayIndex], 0));
                 }
             }
-
 
             Map<Integer, double[]> mapCyclesToStats = new TreeMap<>();
 
             for (int cycleIndex = 0; cycleIndex < cycleStats.length; cycleIndex++) {
-                // TODO: fix this - currently using ratios instead of logs for cycles - see ViewCycles in matlab
-                double[] cycleLogRatioStats = new double[2];
+                if (null != cycleStats[cycleIndex]) {
+                    // TODO: fix this - currently using ratios instead of logs for cycles - see ViewCycles in matlab
+                    double[] cycleLogRatioStats = new double[2];
 
-                cycleLogRatioStats[0] = (cycleStats[cycleIndex].getMean());
-                // TODO: does this mean active cycles??
-                cycleLogRatioStats[1] = cycleStats[cycleIndex].getStandardDeviation() / Math.sqrt(cycleStats[cycleIndex].getN());
+                    cycleLogRatioStats[0] = (cycleStats[cycleIndex].getMean());
+                    // TODO: does this mean active cycles??
+                    cycleLogRatioStats[1] = cycleStats[cycleIndex].getStandardDeviation() / StrictMath.sqrt(cycleStats[cycleIndex].getN());
 
-                mapCyclesToStats.put(cycleIndex, cycleLogRatioStats);
+                    mapCyclesToStats.put(cycleIndex, cycleLogRatioStats);
+                }
             }
 
             int iden = singleBlockModelRecord.isotopeCount(); // ordinal
@@ -214,12 +222,14 @@ public class EnsemblesStore implements Serializable {
         // postprocess to correct by denominator isotope as per ViewCycles in matlab
         for (IsotopicRatio iRatio : mapLogRatiosToCycleStats.keySet()) {
             Map<Integer, double[]> numeratorMapCyclesToStats = mapLogRatiosToCycleStats.get(iRatio);
-            for (int cycleIndex = 0; cycleIndex < numeratorMapCyclesToStats.keySet().size(); cycleIndex++) {
-                numeratorMapCyclesToStats.get(cycleIndex)[0] /= denominatorMapCyclesToStats.get(cycleIndex)[0];
-                double calcSterrCycleRatio =
-                        numeratorMapCyclesToStats.get(cycleIndex)[1] = StrictMath.sqrt(StrictMath.pow(numeratorMapCyclesToStats.get(cycleIndex)[1], 2.0)
-                                + StrictMath.pow(denominatorMapCyclesToStats.get(cycleIndex)[1], 2.0));
-                numeratorMapCyclesToStats.get(cycleIndex)[1] = calcSterrCycleRatio;
+            if (denominatorMapCyclesToStats.size() > 0) {
+                for (int cycleIndex = 0; cycleIndex < numeratorMapCyclesToStats.keySet().size(); cycleIndex++) {
+                    numeratorMapCyclesToStats.get(cycleIndex)[0] /= denominatorMapCyclesToStats.get(cycleIndex)[0];
+                    double calcSterrCycleRatio =
+                            numeratorMapCyclesToStats.get(cycleIndex)[1] = StrictMath.sqrt(StrictMath.pow(numeratorMapCyclesToStats.get(cycleIndex)[1], 2.0)
+                                    + StrictMath.pow(denominatorMapCyclesToStats.get(cycleIndex)[1], 2.0));
+                    numeratorMapCyclesToStats.get(cycleIndex)[1] = calcSterrCycleRatio;
+                }
             }
         }
 

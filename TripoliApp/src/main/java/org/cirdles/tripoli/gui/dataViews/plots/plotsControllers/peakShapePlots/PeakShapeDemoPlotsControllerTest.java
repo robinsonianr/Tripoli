@@ -24,7 +24,7 @@ import org.cirdles.tripoli.plots.PlotBuilder;
 import org.cirdles.tripoli.plots.linePlots.*;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.peakShapes.BeamShapeTestDriver;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.peakShapes.PeakShapeOutputDataRecord;
-import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.PeakShapeProcessor_PhoenixTextFile;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.phoenix.PeakShapeProcessor_PhoenixTextFile;
 import org.cirdles.tripoli.utilities.IntuitiveStringComparator;
 
 import java.io.File;
@@ -64,7 +64,7 @@ public class PeakShapeDemoPlotsControllerTest {
 
     AbstractPlot peakCentreLinePlot;
 
-    PlotWallPane ensemblePlotsWallPane = PlotWallPane.createPlotWallPane(null, null, null, null);
+    PlotWallPane ensemblePlotsWallPane = (PlotWallPane) PlotWallPane.createPlotWallPane(null, null, null, null);
     @FXML
     private ScrollPane resourceListScrollPane;
 
@@ -463,7 +463,7 @@ public class PeakShapeDemoPlotsControllerTest {
                 PlotBuilder[] plots = BeamShapeTestDriver.modelTest(resourceBrowserTarget.toPath(), this::populateListOfResources);
                 PeakShapeOutputDataRecord peakShapeOutputDataRecord =
                         PeakShapeProcessor_PhoenixTextFile.initializeWithMassSpectrometer(
-                                        massSpectrometerModelBuiltinMap.get(MassSpectrometerContextEnum.PHOENIX.getMassSpectrometerName()))
+                                        massSpectrometerModelBuiltinMap.get(MassSpectrometerContextEnum.PHOENIX_FULL.getMassSpectrometerName()))
                                 .prepareInputDataModelFromFile(resourceBrowserTarget.toPath());
 
 

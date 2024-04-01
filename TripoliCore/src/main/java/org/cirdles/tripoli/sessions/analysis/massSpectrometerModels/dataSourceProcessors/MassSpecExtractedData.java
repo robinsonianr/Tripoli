@@ -4,47 +4,82 @@ import org.cirdles.tripoli.constants.MassSpectrometerContextEnum;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.detectorSetups.Detector;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.detectorSetups.DetectorSetup;
 
+import java.io.Serial;
 import java.io.Serializable;
 import java.util.*;
 
 public class MassSpecExtractedData implements Serializable {
-
+    @Serial
+    private static final long serialVersionUID = -3958694419007139380L;
     private MassSpectrometerContextEnum massSpectrometerContext;
     private MassSpecExtractedHeader header;
     private String[] columnHeaders;
     private DetectorSetup detectorSetup;
-    private Map<Integer, MassSpecOutputSingleBlockRecord> blocksData;
+    private Map<Integer, MassSpecOutputBlockRecordFull> blocksDataFull;
+    private Map<Integer, MassSpecOutputBlockRecordLite> blocksDataLite;
 
     public MassSpecExtractedData() {
         massSpectrometerContext = MassSpectrometerContextEnum.UNKNOWN;
         populateHeader(new ArrayList<>());
         populateColumnNamesList(new ArrayList<>());
         populateDetectors(new ArrayList<>());
-        blocksData = new TreeMap<>();
+        blocksDataFull = new TreeMap<>();
+        blocksDataLite = new TreeMap<>();
     }
 
-    public void addBlockRecord(MassSpecOutputSingleBlockRecord massSpecOutputSingleBlockRecord) {
-        blocksData.put(massSpecOutputSingleBlockRecord.blockID(), massSpecOutputSingleBlockRecord);
+//    private void readObject(ObjectInputStream stream) throws IOException,
+//            ClassNotFoundException {
+//        stream.defaultReadObject();
+//
+//        ObjectStreamClass myObject = ObjectStreamClass.lookup(
+//                Class.forName(MassSpecExtractedData.class.getCanonicalName()));
+//        long theSUID = myObject.getSerialVersionUID();
+//
+//        System.out.println("Customized De-serialization of MassSpecExtractedData "
+//                + theSUID);
+//    }
+
+    public void addBlockRecord(MassSpecOutputBlockRecordFull massSpecOutputBlockRecordFull) {
+        blocksDataFull.put(massSpecOutputBlockRecordFull.blockID(), massSpecOutputBlockRecordFull);
+    }
+
+    public void addBlockLiteRecord(MassSpecOutputBlockRecordLite massSpecOutputBlockRecordLite) {
+        blocksDataLite.put(massSpecOutputBlockRecordLite.blockID(), massSpecOutputBlockRecordLite);
     }
 
     public void populateHeader(List<String[]> headerData) {
         String softwareVersion = "";
         String filename = "";
+//        String sampleName = "";
         String methodName = "";
         boolean isCorrected = false;
         boolean hasBChannels = false;
+        // for Lite version
+        int cyclesPerBlock = 0;
         String localDateTimeZero = "LocalDateTime.MIN";
-        for (String[] ss : headerData) {
-            switch (ss[0].trim().toUpperCase()) {
-                case "VERSION" -> softwareVersion = ss[1].trim();
-                case "FILENAME" -> filename = ss[1].trim();
-                case "METHODNAME" -> methodName = ss[1].trim();
-                case "METHOD NAME" -> methodName = ss[1].trim();
+        for (String[] headerStrings : headerData) {
+            switch (headerStrings[0].trim().toUpperCase()) {
+                // Phoenix
+                case "VERSION" -> softwareVersion = headerStrings[1].trim();
+                case "FILENAME" -> filename = headerStrings[1].trim();
+                case "METHODNAME" -> methodName = headerStrings[1].trim();
+                case "METHOD NAME" -> methodName = headerStrings[1].trim();
                 case "CORRECTED" ->
-                        isCorrected = Boolean.parseBoolean(ss[1].trim().toUpperCase().replace("YES", "TRUE"));
+                        isCorrected = Boolean.parseBoolean(headerStrings[1].trim().toUpperCase().replace("YES", "TRUE"));
                 case "BCHANNELS" ->
-                        hasBChannels = Boolean.parseBoolean(ss[1].trim().toUpperCase().replace("YES", "TRUE"));
-                case "TIMEZERO" -> localDateTimeZero = ss[1].trim();
+                        hasBChannels = Boolean.parseBoolean(headerStrings[1].trim().toUpperCase().replace("YES", "TRUE"));
+                case "TIMEZERO" -> localDateTimeZero = headerStrings[1].trim();
+                case "CYCLESTOMEASURE" -> cyclesPerBlock = Integer.parseInt(headerStrings[1].trim());
+
+                // Triton
+                case "DATA VERSION" -> softwareVersion = headerStrings[1].trim();
+                case "DATE" -> localDateTimeZero = headerStrings[1].trim();
+
+                // Nu
+                case "VERSION NUMBER" -> softwareVersion = headerStrings[1].trim();
+//                case "SAMPLE NAME" -> sampleName = headerStrings[1].trim();
+                case "ANALYSIS FILE NAME" -> filename = headerStrings[1].trim();
+                case "NUMBER OF MEASUREMENTS PER BLOCK" -> cyclesPerBlock = Integer.parseInt(headerStrings[1].trim());
             }
         }
         header = new MassSpecExtractedHeader(
@@ -53,7 +88,8 @@ public class MassSpecExtractedData implements Serializable {
                 methodName,
                 isCorrected,
                 hasBChannels,
-                localDateTimeZero
+                localDateTimeZero,
+                (cyclesPerBlock == 0) ? 10 : cyclesPerBlock //TODO: fix this hack for triton
         );
     }
 
@@ -72,6 +108,14 @@ public class MassSpecExtractedData implements Serializable {
             columnHeaders = new String[0];
         } else {
             columnHeaders = columnNames.get(0);
+        }
+    }
+
+    public void populateColumnNamesListNu(List<String> columnNames) {
+        if (columnNames.isEmpty()) {
+            columnHeaders = new String[0];
+        } else {
+            columnHeaders = columnNames.toArray(new String[0]);
         }
     }
 
@@ -102,12 +146,12 @@ public class MassSpecExtractedData implements Serializable {
 
     public double[] calculateSessionTimes() {
         int totalSize = 0;
-        for (MassSpecOutputSingleBlockRecord blockRecord : blocksData.values()) {
+        for (MassSpecOutputBlockRecordFull blockRecord : blocksDataFull.values()) {
             totalSize += blockRecord.onPeakTimeStamps().length;
         }
         double[] times = new double[totalSize];
         totalSize = 0;
-        for (MassSpecOutputSingleBlockRecord blockRecord : blocksData.values()) {
+        for (MassSpecOutputBlockRecordFull blockRecord : blocksDataFull.values()) {
             double[] blockTimes = blockRecord.onPeakTimeStamps();
 
             System.arraycopy(blockTimes, 0, times, totalSize, blockTimes.length);
@@ -116,17 +160,32 @@ public class MassSpecExtractedData implements Serializable {
         return times;
     }
 
-    public int[] assignBlockIdToSessionTime() {
+    public int[] assignBlockIdToSessionTimeFull() {
         int totalSize = 0;
-        for (MassSpecOutputSingleBlockRecord blockRecord : blocksData.values()) {
+        for (MassSpecOutputBlockRecordFull blockRecord : blocksDataFull.values()) {
             totalSize += blockRecord.onPeakTimeStamps().length;
         }
         int[] blockIDs = new int[totalSize];
         totalSize = 0;
-        for (MassSpecOutputSingleBlockRecord blockRecord : blocksData.values()) {
+        for (MassSpecOutputBlockRecordFull blockRecord : blocksDataFull.values()) {
             double[] blockTimes = blockRecord.onPeakTimeStamps();
             Arrays.fill(blockIDs, totalSize, totalSize + blockTimes.length, blockRecord.blockID());
             totalSize += blockRecord.onPeakTimeStamps().length;
+        }
+        return blockIDs;
+    }
+
+    public int[] assignBlockIdToSessionTimeLite() {
+//        int totalSize = 0;
+//        for (MassSpecOutputBlockRecordLite blockRecord : blocksDataLite.values()) {
+//            totalSize += blockRecord.cycleData().length;
+//        }
+        int totalSize = blocksDataLite.keySet().size() * blocksDataLite.get(1).cycleData().length;
+        int[] blockIDs = new int[totalSize];
+        totalSize = 0;
+        for (MassSpecOutputBlockRecordLite blockRecord : blocksDataLite.values()) {
+            Arrays.fill(blockIDs, totalSize, totalSize + blockRecord.cycleData().length, blockRecord.blockID());
+            totalSize += blockRecord.cycleData().length;
         }
         return blockIDs;
     }
@@ -141,6 +200,10 @@ public class MassSpecExtractedData implements Serializable {
 
     public MassSpecExtractedHeader getHeader() {
         return header;
+    }
+
+    public void setHeader(MassSpecExtractedHeader header) {
+        this.header = header;
     }
 
     public String[] getColumnHeaders() {
@@ -159,8 +222,12 @@ public class MassSpecExtractedData implements Serializable {
         this.detectorSetup = detectorSetup;
     }
 
-    public Map<Integer, MassSpecOutputSingleBlockRecord> getBlocksData() {
-        return blocksData;
+    public Map<Integer, MassSpecOutputBlockRecordFull> getBlocksDataFull() {
+        return blocksDataFull;
+    }
+
+    public Map<Integer, MassSpecOutputBlockRecordLite> getBlocksDataLite() {
+        return blocksDataLite;
     }
 
     public record MassSpecExtractedHeader(
@@ -169,7 +236,8 @@ public class MassSpecExtractedData implements Serializable {
             String methodName,
             boolean isCorrected,
             boolean hasBChannels,
-            String localDateTimeZero
+            String localDateTimeZero,
+            int cyclesPerBlock
     ) implements Serializable {
     }
 }

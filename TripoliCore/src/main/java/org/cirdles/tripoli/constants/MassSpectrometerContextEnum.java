@@ -16,7 +16,9 @@
 
 package org.cirdles.tripoli.constants;
 
-import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.PhoenixMassSpec;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.nu.NuMassSpec;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.phoenix.PhoenixMassSpec;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.triton.TritonMassSpec;
 
 import java.util.Arrays;
 import java.util.List;
@@ -25,27 +27,41 @@ import java.util.List;
  * @author James F. Bowring
  */
 public enum MassSpectrometerContextEnum {
-    PHOENIX("Phoenix", "Phoenix",
+    PHOENIX_FULL("Phoenix Full", "Phoenix",
             "#HEADER, Analysis, Version, Filename, MethodName, MethodPath, IsoWorksMethod, FolderPath",
-            PhoenixMassSpec.class, "extractMetaAndBlockDataFromFileVersion_1_2"),
-    PHOENIX_SYNTHETIC("Phoenix_Synthetic", "Phoenix",
+            PhoenixMassSpec.class, "extractMetaAndBlockDataFromFileVersion_1_2", 4),
+    PHOENIX_TIMSDP_CASE1("Phoenix TIMSDP", "Phoenix",
+            "#HEADER, Analysis, Version, Filename, MethodName, MethodPath, FolderPath, IsoWorksMethod, TFEMode, TFEMonitorPeak",
+            PhoenixMassSpec.class, "extractDataFromFileVersion_2_TIMSDP", 1),
+    PHOENIX_IONVANTAGE_XLS("Phoenix IonVantage", "Phoenix",
+            "CYCLE Data",
+            PhoenixMassSpec.class, "extractMetaDataAndBlockDataFromIonvantageXLS", 1),
+    PHOENIX_FULL_SYNTHETIC("Phoenix Full_Synthetic", "Phoenix",
             "Version, Filename, Sample, Sample, Sample, Analysis, User, Method",
-            PhoenixMassSpec.class, "extractMetaAndBlockDataFromFileVersion_1_0"),
+            PhoenixMassSpec.class, "extractMetaAndBlockDataFromFileVersion_1_0", 4),
+    TRITON_EXP("Triton EXP", "Triton",
+            "Triton Analysis Data Report",
+            TritonMassSpec.class, "extractMetaAndBlockDataFromFileTriton", 1),
+    NUTIMS_TXT_CASE1("Nu TIMS", "NU",
+            "Version, Sample, Analysis, Number of measurements, Total, Number of answers, Caption",
+            NuMassSpec.class, "extractMetaAndBlockDataFromFileNu", 1),
     UNKNOWN("UNKNOWN", "UNKNOWN", "",
-            null, "");
+            null, "", 0);
 
     private final String name;
     private final String massSpectrometerName;
     private final String keyWordsList;
     private final Class<?> clazz;
     private final String methodName;
+    private int caseNumber;
 
-    MassSpectrometerContextEnum(String name, String massSpectrometerName, String keyWordsList, Class<?> clazz, String methodName) {
+    MassSpectrometerContextEnum(String name, String massSpectrometerName, String keyWordsList, Class<?> clazz, String methodName, int caseNumber) {
         this.name = name;
         this.massSpectrometerName = massSpectrometerName;
         this.keyWordsList = keyWordsList;
         this.clazz = clazz;
         this.methodName = methodName;
+        this.caseNumber = caseNumber;
     }
 
     public String getName() {
@@ -66,5 +82,9 @@ public enum MassSpectrometerContextEnum {
 
     public String getMethodName() {
         return methodName;
+    }
+
+    public int getCaseNumber() {
+        return caseNumber;
     }
 }

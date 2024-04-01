@@ -16,8 +16,8 @@
 
 package org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc;
 
-import org.cirdles.tripoli.species.IsotopicRatio;
-import org.cirdles.tripoli.species.SpeciesRecordInterface;
+import org.cirdles.tripoli.expressions.species.IsotopicRatio;
+import org.cirdles.tripoli.expressions.species.SpeciesRecordInterface;
 
 import java.io.Serializable;
 import java.util.Map;
@@ -48,11 +48,24 @@ public record SingleBlockModelRecord(
         return onPeakDataModelFaradayArray;
     }
 
+    public double[] getOnPeakFaradayDataSignalNoiseArray(int countOfBaselineDataEntries, int countOfFaradayDataEntries) {
+        double[] onPeakDataSignalNoiseArray = new double[countOfFaradayDataEntries];
+        System.arraycopy(dataSignalNoiseArray, countOfBaselineDataEntries, onPeakDataSignalNoiseArray, 0, countOfFaradayDataEntries);
+        return onPeakDataSignalNoiseArray;
+    }
+
     public double[] getOnPeakDataModelPhotoMultiplierArray(int countOfBaselineDataEntries, int countOfFaradayDataEntries) {
         double[] onPeakDataModelPhotoMultiplierArray = new double[countOfFaradayDataEntries];
         System.arraycopy(dataModelArray, countOfBaselineDataEntries + countOfFaradayDataEntries,
                 onPeakDataModelPhotoMultiplierArray, 0, dataModelArray.length - countOfBaselineDataEntries - countOfFaradayDataEntries);
         return onPeakDataModelPhotoMultiplierArray;
+    }
+
+    public double[] getOnPeakPhotoMultiplierDataSignalNoiseArray(int countOfBaselineDataEntries, int countOfFaradayDataEntries) {
+        double[] onPeakPhotoMultiplierDataSignalNoiseArray = new double[countOfFaradayDataEntries];
+        System.arraycopy(dataSignalNoiseArray, countOfBaselineDataEntries + countOfFaradayDataEntries,
+                onPeakPhotoMultiplierDataSignalNoiseArray, 0, dataSignalNoiseArray.length - countOfBaselineDataEntries - countOfFaradayDataEntries);
+        return onPeakPhotoMultiplierDataSignalNoiseArray;
     }
 
     public int sizeOfModel() {
@@ -64,7 +77,9 @@ public record SingleBlockModelRecord(
         double[] cycleMeans = new double[cycleCount];
         if (mapCycleToStats != null) {
             for (int cycleIndex = 0; cycleIndex < mapCycleToStats.keySet().size(); cycleIndex++) {
-                cycleMeans[cycleIndex] = mapCycleToStats.get(cycleIndex)[0];
+                if (null != mapCycleToStats.get(cycleIndex)) {
+                    cycleMeans[cycleIndex] = mapCycleToStats.get(cycleIndex)[0];
+                }
             }
         } else {
             cycleMeans = calculateDerivedRatioMean(ratio);
@@ -77,7 +92,9 @@ public record SingleBlockModelRecord(
         double[] cycleStdDev = new double[cycleCount];
         if (mapCycleToStats != null) {
             for (int cycleIndex = 0; cycleIndex < mapCycleToStats.keySet().size(); cycleIndex++) {
-                cycleStdDev[cycleIndex] = mapCycleToStats.get(cycleIndex)[1];
+                if (null != mapCycleToStats.get(cycleIndex)) {
+                    cycleStdDev[cycleIndex] = mapCycleToStats.get(cycleIndex)[1];
+                }
             }
         } else {
             cycleStdDev = calculateDerivedRatioOneSigma(ratio);

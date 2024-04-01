@@ -18,14 +18,14 @@ package org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.
 
 import org.cirdles.tripoli.constants.MassSpectrometerContextEnum;
 import org.cirdles.tripoli.constants.TripoliConstants;
-import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.MassSpecOutputSingleBlockRecord;
+import org.cirdles.tripoli.expressions.species.SpeciesRecordInterface;
+import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.MassSpecOutputBlockRecordFull;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.detectorSetups.Detector;
 import org.cirdles.tripoli.sessions.analysis.methods.AnalysisMethod;
 import org.cirdles.tripoli.sessions.analysis.methods.baseline.BaselineCell;
 import org.cirdles.tripoli.sessions.analysis.methods.baseline.BaselineTable;
 import org.cirdles.tripoli.sessions.analysis.methods.sequence.SequenceCell;
 import org.cirdles.tripoli.sessions.analysis.methods.sequence.SequenceTable;
-import org.cirdles.tripoli.species.SpeciesRecordInterface;
 
 import java.util.*;
 
@@ -38,7 +38,7 @@ public enum SingleBlockDataAccumulatorMCMC {
     ;
 
     public static SingleBlockRawDataSetRecord.SingleBlockRawDataRecord accumulateBaselineDataPerBaselineTableSpecs(
-            MassSpecOutputSingleBlockRecord massSpecOutputSingleBlockRecord, AnalysisMethod analysisMethod) {
+            MassSpecOutputBlockRecordFull massSpecOutputBlockRecordFull, AnalysisMethod analysisMethod) {
 
         BaselineTable baselineTable = analysisMethod.getBaselineTable();
         List<Integer> detectorOrdinalIndicesAccumulatorList = new ArrayList<>();
@@ -47,12 +47,13 @@ public enum SingleBlockDataAccumulatorMCMC {
         List<Double> timeAccumulatorList = new ArrayList<>();
         List<Integer> timeIndexAccumulatorList = new ArrayList<>();
         List<Integer> isotopeOrdinalIndicesAccumulatorList = new ArrayList<>();
+        List<Boolean> includedIntensitiesList = new ArrayList<>();
         Map<String, List<Double>> blockMapOfSequenceIdsToData = new TreeMap<>();
 
-        int[] baseLineCycleNumbers = massSpecOutputSingleBlockRecord.baselineCycleNumbers();
-        double[][] baselineIntensities = massSpecOutputSingleBlockRecord.baselineIntensities();
-        double[] baseLineTimeStamps = massSpecOutputSingleBlockRecord.baselineTimeStamps();
-        Map<String, List<Integer>> mapOfBaselineIdsToIndices = massSpecOutputSingleBlockRecord.mapOfBaselineIdsToIndices();
+        int[] baseLineCycleNumbers = massSpecOutputBlockRecordFull.baselineCycleNumbers();
+        double[][] baselineIntensities = massSpecOutputBlockRecordFull.baselineIntensities();
+        double[] baseLineTimeStamps = massSpecOutputBlockRecordFull.baselineTimeStamps();
+        Map<String, List<Integer>> mapOfBaselineIdsToIndices = massSpecOutputBlockRecordFull.mapOfBaselineIdsToIndices();
 
         // this map is in ascending detector order
         Map<Detector, List<BaselineCell>> detectorToBaselineCellMap = baselineTable.getMapOfDetectorsToBaselineCells();
@@ -67,36 +68,38 @@ public enum SingleBlockDataAccumulatorMCMC {
                     for (Integer index : baselineIndices) {
                         detectorOrdinalIndicesAccumulatorList.add(detectorDataColumnIndex);
                         // TODO: Revisit this
-                        double intensity = roundedToSize(baselineIntensities[index][detectorDataColumnIndex], 6);
+                        double intensity = roundedToSize(baselineIntensities[index][detectorDataColumnIndex], 12);
                         double amplifierResistance = detector.getAmplifierResistanceInOhms();
-                        if (MassSpectrometerContextEnum.PHOENIX == analysisMethod.getMassSpectrometerContext()) {
+                        if (MassSpectrometerContextEnum.PHOENIX_FULL == analysisMethod.getMassSpectrometerContext()) {
                             // convert all volts to counts to bring all files into alignment
                             intensity = TripoliConstants.IntensityUnits.convertFromVoltsToCount(intensity, amplifierResistance);
                         }
                         cycleAccumulatorList.add(baseLineCycleNumbers[index]);
                         intensityAccumulatorList.add(intensity);
-                        timeAccumulatorList.add(baseLineTimeStamps[index]);
+                        timeAccumulatorList.add(0.0);//TODO: Scott's code has 0s here baseLineTimeStamps[index]);
                         timeIndexAccumulatorList.add(index);
                         isotopeOrdinalIndicesAccumulatorList.add(0);
+                        includedIntensitiesList.add(false);
                     }
                 }
             }
         }
 
         return new SingleBlockRawDataSetRecord.SingleBlockRawDataRecord(
-                massSpecOutputSingleBlockRecord.blockID(),
+                massSpecOutputBlockRecordFull.blockID(),
                 detectorOrdinalIndicesAccumulatorList,
                 cycleAccumulatorList,
                 intensityAccumulatorList,
                 timeAccumulatorList,
                 timeIndexAccumulatorList,
                 isotopeOrdinalIndicesAccumulatorList,
+                includedIntensitiesList,
                 blockMapOfSequenceIdsToData
         );
     }
 
     public static SingleBlockRawDataSetRecord.SingleBlockRawDataRecord accumulateOnPeakDataPerSequenceTableSpecs(
-            MassSpecOutputSingleBlockRecord massSpecOutputSingleBlockRecord, AnalysisMethod analysisMethod, boolean isFaraday) {
+            MassSpecOutputBlockRecordFull massSpecOutputBlockRecordFull, AnalysisMethod analysisMethod, boolean isFaraday) {
 
         SequenceTable sequenceTable = analysisMethod.getSequenceTable();
         List<SpeciesRecordInterface> speciesList = analysisMethod.getSpeciesList();
@@ -107,12 +110,13 @@ public enum SingleBlockDataAccumulatorMCMC {
         List<Double> timeAccumulatorList = new ArrayList<>();
         List<Integer> timeIndexAccumulatorList = new ArrayList<>();
         List<Integer> isotopeOrdinalIndicesAccumulatorList = new ArrayList<>();
+        List<Boolean> includedIntensitiesList = new ArrayList<>();
         Map<String, List<Double>> blockMapOfSequenceIdsToData = new TreeMap<>();
 
-        int[] onPeakCycleNumbers = massSpecOutputSingleBlockRecord.onPeakCycleNumbers();
-        double[][] onPeakIntensities = massSpecOutputSingleBlockRecord.onPeakIntensities();
-        double[] onPeakTimeStamps = massSpecOutputSingleBlockRecord.onPeakTimeStamps();
-        Map<String, List<Integer>> mapOfOnPeakIdsToIndices = massSpecOutputSingleBlockRecord.mapOfOnPeakIdsToIndices();
+        int[] onPeakCycleNumbers = massSpecOutputBlockRecordFull.onPeakCycleNumbers();
+        double[][] onPeakIntensities = massSpecOutputBlockRecordFull.onPeakIntensities();
+        double[] onPeakTimeStamps = massSpecOutputBlockRecordFull.onPeakTimeStamps();
+        Map<String, List<Integer>> mapOfOnPeakIdsToIndices = massSpecOutputBlockRecordFull.mapOfOnPeakIdsToIndices();
 
         // this map is in ascending detector order
         Map<Detector, List<SequenceCell>> detectorToSequenceCellMap = sequenceTable.getMapOfDetectorsToSequenceCells();
@@ -132,10 +136,10 @@ public enum SingleBlockDataAccumulatorMCMC {
                     for (Integer index : onPeakIndices) {
                         detectorOrdinalIndicesAccumulatorList.add(detectorDataColumnIndex);
                         // TODO: revisit this
-                        double intensity = roundedToSize(onPeakIntensities[index][detectorDataColumnIndex], 10);
+                        double intensity = roundedToSize(onPeakIntensities[index][detectorDataColumnIndex], 12);
                         cycleAccumulatorList.add(onPeakCycleNumbers[index]);
                         double amplifierResistance = detector.getAmplifierResistanceInOhms();
-                        if (MassSpectrometerContextEnum.PHOENIX == analysisMethod.getMassSpectrometerContext() && isFaraday) {
+                        if (MassSpectrometerContextEnum.PHOENIX_FULL == analysisMethod.getMassSpectrometerContext() && isFaraday) {
                             // convert all volts to counts to bring all files into alignment
                             intensity = TripoliConstants.IntensityUnits.convertFromVoltsToCount(intensity, amplifierResistance);
                         }
@@ -144,19 +148,21 @@ public enum SingleBlockDataAccumulatorMCMC {
                         timeIndexAccumulatorList.add(index);
                         isotopeOrdinalIndicesAccumulatorList.add(speciesOrdinalIndex);
                         blockMapOfSequenceIdsToData.get(onPeakID).add(onPeakTimeStamps[index]);
+                        includedIntensitiesList.add(true);
                     }
                 }
             }
         }
 
         return new SingleBlockRawDataSetRecord.SingleBlockRawDataRecord(
-                massSpecOutputSingleBlockRecord.blockID(),
+                massSpecOutputBlockRecordFull.blockID(),
                 detectorOrdinalIndicesAccumulatorList,
                 cycleAccumulatorList,
                 intensityAccumulatorList,
                 timeAccumulatorList,
                 timeIndexAccumulatorList,
                 isotopeOrdinalIndicesAccumulatorList,
+                includedIntensitiesList,
                 blockMapOfSequenceIdsToData
         );
     }

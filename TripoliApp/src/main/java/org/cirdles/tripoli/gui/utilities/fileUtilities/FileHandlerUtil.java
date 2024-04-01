@@ -3,6 +3,7 @@ package org.cirdles.tripoli.gui.utilities.fileUtilities;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.FileChooser;
 import javafx.stage.Window;
+import org.cirdles.tripoli.gui.dataViews.plots.plotsControllers.ogTripoliPlots.MCMCVectorExporter;
 import org.cirdles.tripoli.gui.dialogs.TripoliMessageDialog;
 import org.cirdles.tripoli.sessions.Session;
 import org.cirdles.tripoli.sessions.analysis.Analysis;
@@ -84,8 +85,8 @@ public enum FileHandlerUtil {
         File retVal = null;
 
         FileChooser fileChooser = new FileChooser();
-        fileChooser.setTitle("Select Data text file");
-        fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("Data txt files", "*.txt"));
+        fileChooser.setTitle("Select Data file");
+        fileChooser.setSelectedExtensionFilter(new FileChooser.ExtensionFilter("Data files", "*.txt, *.exp, *.TIMSDP, *.xls"));
         File initDirectory = new File("");
         if (tripoliPersistentState.getMRUDataFileFolderPath() != null) {
             initDirectory = new File(tripoliPersistentState.getMRUDataFileFolderPath());
@@ -95,12 +96,15 @@ public enum FileHandlerUtil {
         File dataFile = fileChooser.showOpenDialog(ownerWindow);
 
         if (null != dataFile) {
-            if (dataFile.getName().toLowerCase(Locale.US).endsWith(".txt")) {
+            if (dataFile.getName().toLowerCase(Locale.US).endsWith(".txt")
+                    || dataFile.getName().toLowerCase(Locale.US).endsWith(".exp")
+                    || dataFile.getName().toLowerCase(Locale.US).endsWith(".timsdp")
+                    || dataFile.getName().toLowerCase(Locale.US).endsWith(".xls")) {
                 retVal = dataFile;
                 tripoliPersistentState.setMRUDataFile(dataFile);
                 tripoliPersistentState.setMRUDataFileFolderPath(dataFile.getParent());
             } else {
-                throw new TripoliException("Filename does not end with '.txt'");
+                throw new TripoliException("Filename does not end with one of: '.txt', '.exp', 'TIMSDP', 'xls'.");
             }
         }
         return retVal;
@@ -151,7 +155,7 @@ public enum FileHandlerUtil {
     }
 
 
-    public static void saveEnsembleData(AnalysisInterface analysis, Window ownerWindow)
+    public static void reportEnsembleDataDetails(AnalysisInterface analysis, Window ownerWindow)
             throws IOException, TripoliException {
 
         DirectoryChooser dirChooser = new DirectoryChooser();
@@ -176,6 +180,34 @@ public enum FileHandlerUtil {
             }
         }
     }
+
+    public static void reportMCMCDataVectors(AnalysisInterface analysis, Window ownerWindow)
+            throws IOException, TripoliException {
+
+        DirectoryChooser dirChooser = new DirectoryChooser();
+        dirChooser.setTitle("Select MCMC Data Vectors Reports Folder");
+        File userHome = new File(File.separator + TripoliPersistentState.getExistingPersistentState().getMRUSessionFolderPath());
+        dirChooser.setInitialDirectory(userHome.isDirectory() ? userHome : null);
+        File directory = dirChooser.showDialog(ownerWindow);
+
+        for (Integer blockID : analysis.getMapOfBlockIdToRawData().keySet()) {
+            // Issue # 196
+            MCMCVectorExporter.DataVectorsRecord dataVectorsRecord = MCMCVectorExporter.exportData(analysis, blockID);
+
+            if (null != dataVectorsRecord) {
+                Path path = Paths.get(directory + File.separator + "MCMCVectorsForBlock_" + blockID + ".csv");
+                OutputStream stream = Files.newOutputStream(path);
+                stream.write(dataVectorsRecord.prettyPrintHeaderAsCSV().getBytes());
+                int countOfData = dataVectorsRecord.baselineFlags().length;
+                for (int i = 0; i < countOfData; i++) {
+                    stream.write(dataVectorsRecord.prettyPrintAsCSV(i).getBytes());
+                }
+
+                stream.close();
+            }
+        }
+    }
+
 
     public static void saveAnalysisReport(AnalysisInterface analysis, Window ownerWindow)
             throws IOException, TripoliException {

@@ -20,6 +20,10 @@ import com.google.common.collect.BiMap;
 import com.google.common.collect.HashBiMap;
 import org.apache.commons.lang3.math.NumberUtils;
 import org.cirdles.tripoli.constants.MassSpectrometerContextEnum;
+import org.cirdles.tripoli.expressions.species.IsotopicRatio;
+import org.cirdles.tripoli.expressions.species.SpeciesRecordInterface;
+import org.cirdles.tripoli.expressions.species.nuclides.NuclidesFactory;
+import org.cirdles.tripoli.expressions.userFunctions.UserFunction;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataSourceProcessors.MassSpecExtractedData;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.detectorSetups.Detector;
 import org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.detectorSetups.DetectorSetup;
@@ -28,9 +32,6 @@ import org.cirdles.tripoli.sessions.analysis.methods.baseline.BaselineTable;
 import org.cirdles.tripoli.sessions.analysis.methods.machineMethods.phoenixMassSpec.PhoenixAnalysisMethod;
 import org.cirdles.tripoli.sessions.analysis.methods.sequence.SequenceCell;
 import org.cirdles.tripoli.sessions.analysis.methods.sequence.SequenceTable;
-import org.cirdles.tripoli.species.IsotopicRatio;
-import org.cirdles.tripoli.species.SpeciesRecordInterface;
-import org.cirdles.tripoli.species.nuclides.NuclidesFactory;
 
 import java.io.Serial;
 import java.io.Serializable;
@@ -54,6 +55,7 @@ public class AnalysisMethod implements Serializable {
     private List<IsotopicRatio> isotopicRatiosList;
     private List<IsotopicRatio> derivedIsotopicRatiosList;
     private BiMap<IsotopicRatio, IsotopicRatio> biMapOfRatiosAndInverses = HashBiMap.create();
+    private List<UserFunction> userFunctions;
     private boolean useLinearKnots;
 
     private AnalysisMethod(String methodName, MassSpectrometerContextEnum massSpectrometerContext) {
@@ -69,11 +71,27 @@ public class AnalysisMethod implements Serializable {
         isotopicRatiosList = new ArrayList<>();
         derivedIsotopicRatiosList = new ArrayList<>();
         mapOfRatioNamesToInvertedFlag = new TreeMap<>();
+        userFunctions = new ArrayList<>();
         this.useLinearKnots = true;
     }
 
     public static AnalysisMethod initializeAnalysisMethod(String methodName, MassSpectrometerContextEnum massSpectrometerContext) {
         return new AnalysisMethod(methodName, massSpectrometerContext);
+    }
+
+    public static AnalysisMethod createAnalysisMethodFromCase1(
+            MassSpecExtractedData massSpecExtractedData) {
+        AnalysisMethod analysisMethod = new AnalysisMethod("Derived for Case1", massSpecExtractedData.getMassSpectrometerContext());
+        String[] columnHeaders = massSpecExtractedData.getColumnHeaders();
+        // ignore first two columns: Cycle, Time
+        String regex = "[^alpha].*\\d?:?\\(?\\d{2,3}.{0,2}\\/\\d?:?\\d{2,3}.{0,2}.*";
+        for (int i = 2; i < columnHeaders.length; i++) {
+//            System.out.println(columnHeaders[i] + "   " + columnHeaders[i].matches(regex));
+            UserFunction userFunction = new UserFunction(columnHeaders[i].trim(), i - 2, columnHeaders[i].matches(regex), true);//columnHeaders[i].matches(regex));
+            analysisMethod.getUserFunctions().add(userFunction);
+        }
+
+        return analysisMethod;
     }
 
     public static AnalysisMethod createAnalysisMethodFromPhoenixAnalysisMethod(
@@ -188,12 +206,12 @@ public class AnalysisMethod implements Serializable {
             retVal += "Method name: " + analysisMethod.methodName + " differs from data file's method name. \n";
         }
 
-        Set<String> baselineNames = new TreeSet<>(List.of(massSpecExtractedData.getBlocksData().get(1).baselineIDs()));
+        Set<String> baselineNames = new TreeSet<>(List.of(massSpecExtractedData.getBlocksDataFull().get(1).baselineIDs()));
         if (analysisMethod.baselineTable.getSequenceCount() != baselineNames.size()) {
             retVal += "Baseline table has " + analysisMethod.baselineTable.getSequenceCount() + " sequences. \n";
         }
 
-        Set<String> onPeakNames = new TreeSet<>(List.of(massSpecExtractedData.getBlocksData().get(1).onPeakIDs()));
+        Set<String> onPeakNames = new TreeSet<>(List.of(massSpecExtractedData.getBlocksDataFull().get(1).onPeakIDs()));
         if (analysisMethod.sequenceTable.getSequenceCount() != onPeakNames.size()) {
             retVal += "Sequence table has " + analysisMethod.sequenceTable.getSequenceCount() + " sequences. \n";
         }
@@ -231,13 +249,24 @@ public class AnalysisMethod implements Serializable {
         return retVal.toString();
     }
 
-    public String prettyPrintMethodSummary(boolean onTwoLines) {
+    public String prettyPrintMethodSummary(boolean verbose) {
         StringBuilder retVal = new StringBuilder();
-        retVal.append("Method: ").append(methodName).append(SPACES_100, 0, 55 - methodName.length()).append(onTwoLines ? "\nSpecies: " : "  Species: ");
+        retVal.append("Method: ").append(methodName).append(SPACES_100, 0, 55 - methodName.length()).append(verbose ? "\nSpecies: " : "  Species: ");
         List<SpeciesRecordInterface> speciesAlphabetic = new ArrayList<>(speciesList);
         Collections.sort(speciesAlphabetic, Comparator.comparing(s -> s.getAtomicMass()));
         for (SpeciesRecordInterface species : speciesAlphabetic) {
             retVal.append(species.prettyPrintShortForm() + " ");
+        }
+        if (verbose) {
+            retVal.append("\nIsotopicRatios: ");
+            for (IsotopicRatio ratio : isotopicRatiosList) {
+                retVal.append("\n\t\t" + ratio.prettyPrint());
+            }
+            for (UserFunction userFunction : userFunctions) {
+                if (userFunction.isTreatAsIsotopicRatio()) {
+                    retVal.append("\n\t\t" + userFunction.getName());
+                }
+            }
         }
 
         return retVal.toString();
@@ -288,6 +317,7 @@ public class AnalysisMethod implements Serializable {
         }
     }
 
+
     public void sortSpeciesListByAbundance() {
         Collections.sort(speciesList, Comparator.comparing(s -> s.getMassNumber()));
     }
@@ -314,8 +344,24 @@ public class AnalysisMethod implements Serializable {
         return isotopicRatiosList;
     }
 
+    public List<IsotopicRatio> getCloneOfIsotopicRatiosList() {
+        List<IsotopicRatio> cloneOfIsotopicRatios = new ArrayList<>();
+        for (IsotopicRatio ir : isotopicRatiosList) {
+            cloneOfIsotopicRatios.add(new IsotopicRatio(ir.getNumerator(), ir.getDenominator(), ir.isDisplayed()));
+        }
+        return cloneOfIsotopicRatios;
+    }
+
     public List<IsotopicRatio> getDerivedIsotopicRatiosList() {
         return derivedIsotopicRatiosList;
+    }
+
+    public List<IsotopicRatio> getCloneOfDerivedIsotopicRatiosList() {
+        List<IsotopicRatio> cloneOfDerivedIsotopicRatios = new ArrayList<>();
+        for (IsotopicRatio ir : derivedIsotopicRatiosList) {
+            cloneOfDerivedIsotopicRatios.add(new IsotopicRatio(ir.getNumerator(), ir.getDenominator(), ir.isDisplayed()));
+        }
+        return cloneOfDerivedIsotopicRatios;
     }
 
     public BiMap<IsotopicRatio, IsotopicRatio> getBiMapOfRatiosAndInverses() {
@@ -324,6 +370,10 @@ public class AnalysisMethod implements Serializable {
 
     public Map<String, Boolean> getMapOfRatioNamesToInvertedFlag() {
         return mapOfRatioNamesToInvertedFlag;
+    }
+
+    public List<UserFunction> getUserFunctions() {
+        return userFunctions;
     }
 
     public void addRatioToIsotopicRatiosList(IsotopicRatio isotopicRatio) {

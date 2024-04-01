@@ -17,8 +17,7 @@
 package org.cirdles.tripoli.plots.analysisPlotBuilders;
 
 import org.cirdles.tripoli.plots.PlotBuilder;
-import org.cirdles.tripoli.plots.compoundPlotBuilders.BlockRatioCyclesRecord;
-import org.cirdles.tripoli.species.IsotopicRatio;
+import org.cirdles.tripoli.plots.compoundPlotBuilders.PlotBlockCyclesRecord;
 
 import java.util.List;
 import java.util.Map;
@@ -28,63 +27,45 @@ import java.util.TreeMap;
  * @author James F. Bowring
  */
 public class BlockAnalysisRatioCyclesBuilder extends PlotBuilder {
-    //    @Serial
-//    private static final long serialVersionUID = 9180059676626735662L;
-    private BlockAnalysisRatioCyclesRecord blockAnalysisRatioCyclesRecord;
+    private AnalysisBlockCyclesRecord analysisBlockCyclesRecord = null;
 
-
-    public BlockAnalysisRatioCyclesBuilder() {
-    }
-
-    private BlockAnalysisRatioCyclesBuilder(IsotopicRatio isotopicRatio, List<BlockRatioCyclesRecord> blockRatioCyclesRecords, String xAxisLabel, String yAxisLabel) {
-        super(new String[]{isotopicRatio.prettyPrint()}, xAxisLabel, yAxisLabel, true);
-        blockAnalysisRatioCyclesRecord = generateBlockAnalysisRatioCycles(isotopicRatio, blockRatioCyclesRecords);
+    private BlockAnalysisRatioCyclesBuilder(String plotTitle, Map<Integer, Integer> mapOfBlockIdToProcessStatus, List<PlotBlockCyclesRecord> plotBlockCyclesRecords, boolean isRatio, boolean isInverted, int[] xAxisBlockIDs) {
+        super(new String[]{plotTitle}, "NONE", "NONE", true);
+        analysisBlockCyclesRecord = generateAnalysisBlockCyclesRecord(plotBlockCyclesRecords, mapOfBlockIdToProcessStatus, xAxisBlockIDs, isRatio, isInverted);
     }
 
     public static BlockAnalysisRatioCyclesBuilder initializeBlockAnalysisRatioCycles(
-            IsotopicRatio isotopicRatio, List<BlockRatioCyclesRecord> blockRatioCyclesRecordsList, String xAxisLabel, String yAxisLabel) {
-        BlockAnalysisRatioCyclesBuilder blockAnalysisRatioCyclesBuilder = new BlockAnalysisRatioCyclesBuilder(isotopicRatio, blockRatioCyclesRecordsList, xAxisLabel, yAxisLabel);
+            String plotTitle, List<PlotBlockCyclesRecord> plotBlockCyclesRecordsList, Map<Integer, Integer> mapOfBlockIdToProcessStatus, int[] xAxisBlockIDs, boolean isRatio, boolean isInverted) {
+        BlockAnalysisRatioCyclesBuilder blockAnalysisRatioCyclesBuilder =
+                new BlockAnalysisRatioCyclesBuilder(plotTitle, mapOfBlockIdToProcessStatus, plotBlockCyclesRecordsList, isRatio, isInverted, xAxisBlockIDs);
 
         return blockAnalysisRatioCyclesBuilder;
     }
 
-    private BlockAnalysisRatioCyclesRecord generateBlockAnalysisRatioCycles(IsotopicRatio isotopicRatio, List<BlockRatioCyclesRecord> blockRatioCyclesRecordsList) {
-//        List<Double> histogramMeans = new ArrayList<>();
-//        List<Double> histogramOneSigma = new ArrayList<>();
-//        DescriptiveStatistics descriptiveStatisticsRatiosByBlock = new DescriptiveStatistics();
-
-        Map<Integer, BlockRatioCyclesRecord> mapBlockIdToBlockRatioCyclesRecord = new TreeMap<>();
+    private AnalysisBlockCyclesRecord generateAnalysisBlockCyclesRecord(
+            List<PlotBlockCyclesRecord> plotBlockCyclesRecordsList, Map<Integer, Integer> mapOfBlockIdToProcessStatus, int[] xAxisBlockIDs, boolean isRatio, boolean isInverted) {
+        Map<Integer, PlotBlockCyclesRecord> mapBlockIdToBlockCyclesRecord = new TreeMap<>();
         int blockIndex = 0;
-        for (BlockRatioCyclesRecord blockRatioCyclesRecord : blockRatioCyclesRecordsList) {
-            if (blockRatioCyclesRecord != null) {
-                mapBlockIdToBlockRatioCyclesRecord.put(blockRatioCyclesRecord.blockID(), blockRatioCyclesRecord);
-//            histogramMeans.add(histogramRecord.mean());
-//            descriptiveStatisticsRatiosByBlock.addValue(histogramRecord.mean());
-//            histogramOneSigma.add(histogramRecord.standardDeviation());
+        for (PlotBlockCyclesRecord plotBlockCyclesRecord : plotBlockCyclesRecordsList) {
+            if (plotBlockCyclesRecord != null) {
+                mapBlockIdToBlockCyclesRecord.put(plotBlockCyclesRecord.blockID(), plotBlockCyclesRecord);
             } else {
-                mapBlockIdToBlockRatioCyclesRecord.put(blockIndex + 1, null);
+                mapBlockIdToBlockCyclesRecord.put(blockIndex + 1, null);
             }
             blockIndex++;
         }
-//        double[] blockIds = blockIdList.stream().mapToDouble(d -> d).toArray();
-//        double[] blockMeans = histogramMeans.stream().mapToDouble(d -> d).toArray();
-//        double[] blockOneSigmas = histogramOneSigma.stream().mapToDouble(d -> d).toArray();
 
-        return new BlockAnalysisRatioCyclesRecord(
-                isotopicRatio,
-                mapBlockIdToBlockRatioCyclesRecord,
-                blockRatioCyclesRecordsList.get(0).cyclesIncluded().length,
-                0.0,
-                0.0,
-                1,
-                1,
+        return new AnalysisBlockCyclesRecord(
+                mapBlockIdToBlockCyclesRecord,
+                mapOfBlockIdToProcessStatus,
+                plotBlockCyclesRecordsList.get(0).cyclesIncluded().length,
+                xAxisBlockIDs,
                 title,
-                "Blocks & Cycles by Time",
-                "Ratio"
-        );
+                isRatio,
+                isInverted);
     }
 
-    public BlockAnalysisRatioCyclesRecord getBlockAnalysisRatioCyclesRecord() {
-        return blockAnalysisRatioCyclesRecord;
+    public AnalysisBlockCyclesRecord getBlockAnalysisRatioCyclesRecord() {
+        return analysisBlockCyclesRecord;
     }
 }

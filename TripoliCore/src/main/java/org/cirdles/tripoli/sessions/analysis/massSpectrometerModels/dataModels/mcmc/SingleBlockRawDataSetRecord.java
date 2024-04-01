@@ -16,7 +16,7 @@
 
 package org.cirdles.tripoli.sessions.analysis.massSpectrometerModels.dataModels.mcmc;
 
-import org.cirdles.tripoli.species.SpeciesRecordInterface;
+import org.cirdles.tripoli.expressions.species.SpeciesRecordInterface;
 
 import java.io.Serializable;
 import java.util.List;
@@ -31,8 +31,10 @@ public record SingleBlockRawDataSetRecord(
         SingleBlockRawDataRecord onPeakFaradayDataSetMCMC,
         SingleBlockRawDataRecord onPeakPhotoMultiplierDataSetMCMC,
         double[][] blockKnotInterpolationArray,
+        double[] blockTimeArray,
         int[] blockCycleArray,
         double[] blockRawDataArray,
+        boolean[] blockIncludedIntensitiesArray,
         int[] blockDetectorOrdinalIndicesArray,
         int[] blockIsotopeOrdinalIndicesArray,
         int[] blockTimeIndicesArray,
@@ -59,6 +61,7 @@ public record SingleBlockRawDataSetRecord(
             List<Double> timeAccumulatorList,
             List<Integer> timeIndexAccumulatorList,
             List<Integer> isotopeOrdinalIndicesAccumulatorList,
+            List<Boolean> includedIntensitiesList,
             Map<String, List<Double>> blockMapOfIdsToData
     ) implements Serializable {
     }
